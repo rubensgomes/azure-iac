@@ -11,7 +11,7 @@ The following Terraform backend initial resources are created:
 - storage account (e.g., sttfstaterubens01)
 - storage container (e.g., tstate)
 
-Once this module is run, Terraform will be able to use the corresponding 
+Once this module is run, Terraform will be able to use the corresponding
 blob storage to store the state files of Terraform configurations.
 
 ## Configuration Steps
@@ -91,3 +91,20 @@ storage account, and container name) into Terraform local state:
    terraform plan -out=bootstrap.tfplan
    terraform apply bootstrap.tfplan
    ````
+
+## Migrate Terraform Local State to Azure Cloud Blob Storage
+
+In order to store the bootstrap-backend Terraform state in the Azure Storage
+account/container, first ensure you have successfully created the above backend
+initial resources. 
+
+The “gotcha” here is the classic chicken‑and‑egg problem: you can’t use an Azure
+Blob backend until the storage account/container exist. Once you've already
+created them (using local state), you’re now in the perfect position to migrate
+that local state into the blob container.
+
+1. Run the steps below:
+
+```bash
+- 
+```

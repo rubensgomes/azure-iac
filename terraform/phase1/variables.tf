@@ -70,7 +70,7 @@ NOTE: When using azurerm_container_app_environment.infrastructure_subnet_id,
 provider docs indicate the subnet must be large enough (commonly /21 or larger).
 Plan CIDR accordingly.
 EOT
-  default = ["10.60.0.0/21"]
+  default     = ["10.60.0.0/21"]
 }
 
 variable "postgres_subnet_prefixes" {
@@ -82,7 +82,7 @@ Phase 1 delegates this subnet to:
   Microsoft.DBforPostgreSQL/flexibleServers
 so Phase 3 can create PostgreSQL with public access disabled.
 EOT
-  default = ["10.60.8.0/24"]
+  default     = ["10.60.8.0/24"]
 }
 
 ############################

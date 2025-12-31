@@ -13,7 +13,7 @@ stage, and prod.
 
 - account email:       <SECRET_INFO>
 - tenant id:           <SECRET_INFO>
-- subscription name:   sub-rubens
+- subscription name:   sub-rubens-free
 - subscription id:     <SECRET_INFO>
 
 ## Pre-requisites
