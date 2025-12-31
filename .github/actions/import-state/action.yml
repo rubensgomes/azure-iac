@@ -28,12 +28,13 @@ runs:
       shell: bash
       run: |
         set -euo pipefail
-        if terraform state show azurerm_resource_group.tfstate >/dev/null 2>&1; then
+        if ! terraform state show azurerm_resource_group.tfstate >/dev/null 2>&1; then
+          printf "Importing resource %s.\n" "${AZURE_RG_NAME}"
           # import resource group
           terraform import azurerm_resource_group.tfstate \
             "/subscriptions/${ARM_SUBSCRIPTION_ID}/resourceGroups/${AZURE_RG_NAME}"
         else
-          echo "RG ${AZURE_RG_NAME} already in state; skipping import."
+          printf "Resource %s already in state; skipping import.\n" "${AZURE_RG_NAME}"
         fi
 
     - name: Import existing storage account if needed (bootstrap)
@@ -41,12 +42,13 @@ runs:
       shell: bash
       run: |
         set -euo pipefail
-        if terraform state show azurerm_storage_account.tfstate >/dev/null 2>&1; then
+        if ! terraform state show azurerm_storage_account.tfstate >/dev/null 2>&1; then
+          printf "Importing resource %s.\n" "${AZURE_STORAGE_ACCOUNT_ID}"
           # import storage account
           terraform import azurerm_storage_account.tfstate \
             "/subscriptions/${ARM_SUBSCRIPTION_ID}/resourceGroups/${AZURE_RG_NAME}/providers/Microsoft.Storage/storageAccounts/${AZURE_STORAGE_ACCOUNT_ID}"
         else
-          echo "Storage ${AZURE_STORAGE_ACCOUNT_ID} already in state; skipping import."
+          printf "Resource %s already in state; skipping import.\n" "${AZURE_STORAGE_ACCOUNT_ID}"
         fi
 
     - name: Import existing container name if needed (bootstrap)
@@ -54,12 +56,13 @@ runs:
       shell: bash
       run: |
         set -euo pipefail
-        if terraform state show azurerm_storage_container.tfstate >/dev/null 2>&1; then
+        if ! terraform state show azurerm_storage_container.tfstate >/dev/null 2>&1; then
+          printf "Importing resource %s.\n" "${AZURE_CONTAINER_NAME}"
           # import container name
           terraform import azurerm_storage_container.tfstate \
             "https://${AZURE_STORAGE_ACCOUNT_ID}.blob.core.windows.net/${AZURE_CONTAINER_NAME}"
         else
-          echo "Container ${AZURE_CONTAINER_NAME} already in state; skipping import."
+          printf "Resource %s already in state; skipping import.\n" "${AZURE_CONTAINER_NAME}"
         fi
 
     - name: Terraform plan after imports (bootstrap)
