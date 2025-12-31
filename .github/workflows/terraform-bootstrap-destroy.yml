@@ -1,4 +1,3 @@
-
 # =============================================================================
 # Terraform Bootstrap Backend - DESTROY (manual, no safeguard)
 #
@@ -73,6 +72,8 @@ jobs:
   destroy:
     name: Destroy bootstrap backend
     runs-on: ubuntu-latest
+    # Bind the "AZURE" environment to this job.
+    environment: AZURE   # <-- IMPORTANT: enables Environment secrets
 
     # -------------------------------------------------------------------------
     # Environment variables for the job:
@@ -117,11 +118,10 @@ jobs:
       - name: Azure Login (Service Principal Secret)
         uses: azure/login@v2
         with:
-          creds: >-
-            {"clientId":"${{ secrets.AZURE_CLIENT_ID }}",
-             "clientSecret":"${{ secrets.AZURE_CLIENT_SECRET }}",
-             "tenantId":"${{ secrets.AZURE_TENANT_ID }}",
-             "subscriptionId":"${{ secrets.AZURE_SUBSCRIPTION_ID }}"}
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
 
       # -----------------------------------------------------------------------
       # Step 3: Install Terraform CLI on the runner

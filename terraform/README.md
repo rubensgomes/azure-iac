@@ -68,8 +68,7 @@ resources.
 6. Also, save the credentials to the corresponding GitHub repo:
 
     ```text
-    "azure-iac" GitHub Credentials:  Repo (azure-iac) --> Settings -->
-                Environment: "dev" --> Secrets
+    "azure-iac" Repo → Settings → Environments → AZURE → Environment secrets 
     
     AZURE_CLIENT_ID='<SECRET_INFO>'
     AZURE_CLIENT_SECRET='<SECRET_INFO>'
