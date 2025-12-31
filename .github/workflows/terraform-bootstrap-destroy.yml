@@ -20,7 +20,8 @@
 #     branch protections, repo permissions, or optional workflow inputs.
 #
 # Authentication:
-#   Uses Azure Service Principal + Client Secret stored in GitHub Secrets:
+#   Uses Azure Service Principal + Client Secret stored in GitHub Environment
+#   Secrets (Environment name: "AZURE"):
 #     - AZURE_CLIENT_ID
 #     - AZURE_CLIENT_SECRET
 #     - AZURE_TENANT_ID
@@ -32,39 +33,24 @@
 #   - If your bootstrap terraform creates an Azure RG delete lock, destroy can
 #     fail with ScopeLocked errors. Your note implies enable_rg_lock=false to
 #     avoid that (good).
-#   - If your bootstrap backend uses local state, destroy will follow that local
-#     state. If it uses a backend, ensure access is configured correctly.
-#
-# SAFETY TIP (not enabled here):
-#   Consider requiring approvals via GitHub Environments for this workflow.
-#   (Example included at bottom in comments.)
+#   - azure/login@v2 does NOT accept "client-secret:" as an input; for SP+secret
+#     auth you must use the "creds" JSON object.
 # =============================================================================
 
 name: Terraform Bootstrap Backend - DESTROY (manual)
 
 # -----------------------------------------------------------------------------
 # Manual trigger ONLY.
-# This keeps destructive actions explicit: a human must click "Run workflow".
 # -----------------------------------------------------------------------------
 on:
-  workflow_dispatch: {}   # no inputs; no in-workflow safeguard by design
+  workflow_dispatch: {}   # manual trigger only, no inputs
 
-# -----------------------------------------------------------------------------
-# Permissions:
-# contents:read is enough for actions/checkout to pull repository contents.
-# Principle of least privilege: do not grant more than you need.
-# -----------------------------------------------------------------------------
 permissions:
-  # Required to checkout repository content.
   contents: read
-  id-token: write
 
 # -----------------------------------------------------------------------------
 # Concurrency:
-# Prevent apply/destroy from running at the same time against the same bootstrap
-# state. This reduces the risk of:
-#   - state corruption
-#   - resource contention / Azure locking races
+# Prevent apply/destroy from running at the same time.
 # -----------------------------------------------------------------------------
 concurrency:
   group: terraform-bootstrap
@@ -74,17 +60,15 @@ jobs:
   destroy:
     name: Destroy bootstrap backend
     runs-on: ubuntu-latest
-    # Bind the "AZURE" environment to this job.
-    environment: AZURE   # <-- IMPORTANT: enables Environment secrets
 
     # -------------------------------------------------------------------------
-    # Environment variables for the job:
-    # - WORKING_DIR points Terraform to the bootstrap configuration folder
-    # - ARM_* variables are read automatically by the AzureRM Terraform provider
-    # - TF_IN_AUTOMATION makes Terraform more CI-friendly (no interactive prompts)
+    # Bind the GitHub Environment named "AZURE" to this job.
+    # REQUIRED for Environment secrets to be injected.
     # -------------------------------------------------------------------------
+    environment: AZURE
+
     env:
-      # Where your bootstrap Terraform configuration lives
+      # Terraform folder containing the bootstrap backend code + terraform.tfvars
       WORKING_DIR: terraform/bootstrap-backend
 
       # AzureRM provider authentication (Service Principal + Secret)
@@ -94,14 +78,12 @@ jobs:
       ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
       ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      # Tell Terraform it's running in CI
+      # Makes Terraform less interactive and more CI-friendly.
       TF_IN_AUTOMATION: "true"
 
     steps:
       # -----------------------------------------------------------------------
       # Step 1: Checkout repository content
-      #
-      # Fetches the Terraform code in terraform/bootstrap-backend.
       # -----------------------------------------------------------------------
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -110,61 +92,40 @@ jobs:
       # Step 1.5: Verify required secrets are present (fail fast)
       #
       # Why:
-      #   - If the GitHub Environment is not bound correctly, or secrets are
-      #     missing/misnamed, these values will resolve as empty strings.
-      #   - Failing here gives a clear, immediate error before azure/login or
-      #     terraform does something confusing.
-      #
-      # What it checks:
-      #   - The ARM_* environment variables (which are populated from secrets)
-      #
-      # Security:
-      #   - This step does NOT print secret values, only the missing variable name.
+      #   - If Environment secrets aren't available, the ARM_* vars become empty.
+      #   - This fails early with a clear message (no secret leakage).
       # -----------------------------------------------------------------------
       - name: Verify required secrets are present (no output)
         shell: bash
         run: |
           set -euo pipefail
           missing=0
-
           for v in ARM_CLIENT_ID ARM_CLIENT_SECRET ARM_TENANT_ID ARM_SUBSCRIPTION_ID; do
             if [ -z "${!v:-}" ]; then
               echo "Missing required secret/env var: ${v}"
               missing=1
             fi
           done
-
           exit $missing
 
       # -----------------------------------------------------------------------
-      # Step 2: Azure Login (optional but strongly recommended)
+      # Step 2: Azure Login (Service Principal + Client Secret)
       #
-      # Terraform can authenticate using ARM_* env vars alone. However, logging in
-      # here provides:
-      #   - faster failure with clearer auth errors if secrets are wrong
-      #   - ability to add "az" validation commands later if desired
-      #
-      # Security:
-      #   - GitHub masks secret values automatically in logs
+      # Notes:
+      #   - For azure/login@v2, SP+secret auth must be passed via "creds" JSON.
       # -----------------------------------------------------------------------
       - name: Azure Login (Service Principal Secret)
         uses: azure/login@v2
         with:
           auth-type: SERVICE_PRINCIPAL
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          creds: >-
+            {"clientId":"${{ secrets.AZURE_CLIENT_ID }}",
+             "clientSecret":"${{ secrets.AZURE_CLIENT_SECRET }}",
+             "tenantId":"${{ secrets.AZURE_TENANT_ID }}",
+             "subscriptionId":"${{ secrets.AZURE_SUBSCRIPTION_ID }}"}
 
       # -----------------------------------------------------------------------
       # Step 3: Install Terraform CLI on the runner
-      #
-      # Pin Terraform version to match what you've validated locally.
-      # terraform_wrapper=false keeps output simpler (less noisy).
-      #
-      # NOTE:
-      #   Ensure the pinned version actually exists and is supported by your
-      #   provider constraints (required_version, etc.).
       # -----------------------------------------------------------------------
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
@@ -174,13 +135,6 @@ jobs:
 
       # -----------------------------------------------------------------------
       # Step 4: terraform init
-      #
-      # Initializes providers and state so Terraform knows what resources exist.
-      # --upgrade refreshes provider plugins to newest acceptable versions.
-      #
-      # IMPORTANT:
-      #   Destroy requires correct backend + state access. If state is remote,
-      #   ensure this job has network access and permissions to that backend.
       # -----------------------------------------------------------------------
       - name: Terraform init (bootstrap)
         working-directory: ${{ env.WORKING_DIR }}
@@ -188,14 +142,6 @@ jobs:
 
       # -----------------------------------------------------------------------
       # Step 5: terraform destroy
-      #
-      # Destroys all resources tracked in this bootstrap Terraform state.
-      #
-      # -auto-approve:
-      #   Runs non-interactively (no manual "yes" prompt).
-      #
-      # WARNING:
-      #   This is destructive.
       # -----------------------------------------------------------------------
       - name: Terraform destroy (bootstrap)
         working-directory: ${{ env.WORKING_DIR }}
