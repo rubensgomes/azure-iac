@@ -10,11 +10,11 @@ resource "azurerm_resource_group" "env" {
 module "app" {
   source = "../../modules/app"
 
-  environment               = var.environment
-  location                  = var.location
-  resource_group_name       = azurerm_resource_group.env.name
+  environment                = var.environment
+  location                   = var.location
+  resource_group_name        = azurerm_resource_group.env.name
   app_storage_account_prefix = var.app_storage_account_prefix
-  tags                      = merge(var.tags, { env = var.environment })
+  tags                       = merge(var.tags, { env = var.environment })
 }
 
 

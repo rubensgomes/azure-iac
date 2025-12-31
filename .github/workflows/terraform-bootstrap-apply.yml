@@ -1,0 +1,171 @@
+# =============================================================================
+# Terraform Bootstrap Backend - APPLY (manual)
+#
+# Purpose:
+#   Creates/updates ONLY the Terraform *bootstrap backend* resources (state RG,
+#   storage account, blob container, etc.) defined under:
+#       terraform/bootstrap-backend
+#
+# Trigger:
+#   Manual only (workflow_dispatch). You start it from the GitHub Actions UI.
+#
+# Authentication:
+#   Uses Azure Service Principal + Client Secret stored in GitHub Secrets:
+#     - AZURE_CLIENT_ID
+#     - AZURE_CLIENT_SECRET
+#     - AZURE_TENANT_ID
+#     - AZURE_SUBSCRIPTION_ID
+#
+# Why this exists:
+#   Bootstrap backend resources are usually foundational (state storage).
+#   Keeping this workflow separate lets you manage backend lifecycle cleanly.
+#
+# Notes:
+#   - Terraform automatically loads terraform.tfvars from WORKING_DIR.
+#     So values like enable_rg_lock=false are applied without passing -var.
+#   - This workflow uses "terraform plan -out=..." followed by "terraform apply <plan>"
+#     so apply uses exactly what was planned.
+# =============================================================================
+
+name: Terraform Bootstrap Backend - APPLY (manual)
+
+on:
+  workflow_dispatch: {}  # manual trigger only
+
+permissions:
+  # Required to checkout repository content.
+  contents: read
+
+concurrency:
+  # Prevent simultaneous apply/destroy runs against the same bootstrap state.
+  # This helps avoid state corruption and Azure locking race conditions.
+  group: terraform-bootstrap
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    name: Apply bootstrap backend
+    runs-on: ubuntu-latest
+
+    env:
+      # -----------------------------------------------------------------------
+      # Where your bootstrap Terraform configuration lives.
+      # Update if your repo path changes.
+      # -----------------------------------------------------------------------
+      WORKING_DIR: terraform/bootstrap-backend
+
+      # -----------------------------------------------------------------------
+      # AzureRM provider authentication (Service Principal + Secret)
+      #
+      # Terraform's AzureRM provider reads these automatically.
+      # They must match the Service Principal you want GitHub Actions to use.
+      # -----------------------------------------------------------------------
+      ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+      ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+      ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      # Tell Terraform it's running in CI (avoids interactive prompts / improves logs)
+      TF_IN_AUTOMATION: "true"
+
+    steps:
+      # -----------------------------------------------------------------------
+      # Step 1: Checkout repository content
+      #
+      # Fetches the Terraform code in terraform/bootstrap-backend.
+      # -----------------------------------------------------------------------
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      # -----------------------------------------------------------------------
+      # Step 2: Azure Login (optional but strongly recommended)
+      #
+      # Why do this if Terraform uses ARM_* env vars anyway?
+      #   - Fails fast with a clear auth error if secrets are wrong
+      #   - Helpful if you later add az CLI validation commands
+      #
+      # Security:
+      #   - Secrets are not printed; GitHub masks secret values automatically.
+      # -----------------------------------------------------------------------
+      - name: Azure Login (Service Principal Secret)
+        uses: azure/login@v2
+        with:
+          creds: >-
+            {"clientId":"${{ secrets.AZURE_CLIENT_ID }}",
+             "clientSecret":"${{ secrets.AZURE_CLIENT_SECRET }}",
+             "tenantId":"${{ secrets.AZURE_TENANT_ID }}",
+             "subscriptionId":"${{ secrets.AZURE_SUBSCRIPTION_ID }}"}
+
+      # -----------------------------------------------------------------------
+      # Step 3: Install Terraform on runner
+      #
+      # Pin Terraform version to match your local validated version.
+      # terraform_wrapper=false keeps output simpler.
+      # -----------------------------------------------------------------------
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.14.3"
+          terraform_wrapper: false
+
+      # -----------------------------------------------------------------------
+      # Step 4: Check formatting
+      #
+      # -check: don't modify files; fail workflow if formatting differs
+      # -recursive: check all .tf files in the folder tree
+      # -----------------------------------------------------------------------
+      - name: Terraform fmt (check)
+        working-directory: ${{ env.WORKING_DIR }}
+        run: terraform fmt -check -recursive
+
+      # -----------------------------------------------------------------------
+      # Step 5: terraform init
+      #
+      # For bootstrap-backend, this usually uses local state (unless you configured
+      # a backend for bootstrap too). It downloads providers and initializes state.
+      # -----------------------------------------------------------------------
+      - name: Terraform init (bootstrap)
+        working-directory: ${{ env.WORKING_DIR }}
+        run: terraform init --upgrade
+
+      # -----------------------------------------------------------------------
+      # Step 6: terraform validate
+      #
+      # Catches syntax errors and internal consistency issues before planning.
+      # -----------------------------------------------------------------------
+      - name: Terraform validate (bootstrap)
+        working-directory: ${{ env.WORKING_DIR }}
+        run: terraform validate
+
+      # -----------------------------------------------------------------------
+      # Step 7: terraform plan (save to file)
+      #
+      # Using -out creates a plan file so apply uses EXACTLY what was planned.
+      #
+      # IMPORTANT:
+      #   terraform.tfvars is auto-loaded from WORKING_DIR.
+      #   That means enable_rg_lock=false is applied automatically.
+      # -----------------------------------------------------------------------
+      - name: Terraform plan (bootstrap)
+        working-directory: ${{ env.WORKING_DIR }}
+        run: terraform plan -out=bootstrap.tfplan
+
+      # -----------------------------------------------------------------------
+      # Step 8: terraform apply the saved plan
+      #
+      # -auto-approve: non-interactive apply (safe for manual workflow runs)
+      # -----------------------------------------------------------------------
+      - name: Terraform apply (bootstrap)
+        working-directory: ${{ env.WORKING_DIR }}
+        run: terraform apply -auto-approve bootstrap.tfplan
+
+      # -----------------------------------------------------------------------
+      # Step 9 (optional): Show outputs
+      #
+      # Useful for debugging and copying values (storage account name, RG name, etc.)
+      # If any output is sensitive, mark it sensitive in Terraform and consider
+      # removing this step to avoid accidental exposure.
+      # -----------------------------------------------------------------------
+      - name: Terraform outputs (bootstrap)
+        working-directory: ${{ env.WORKING_DIR }}
+        run: terraform output
