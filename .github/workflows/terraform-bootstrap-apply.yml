@@ -50,8 +50,13 @@ concurrency:
 
 jobs:
   apply:
-    if: ${{ github.event.workflow_run.conclusion == 'success' &&
-            github.event.workflow_run.event == 'schedule' }}
+    if: >-
+      ${{
+        github.event_name == 'workflow_dispatch' ||
+        (github.event_name == 'workflow_run' &&
+         github.event.workflow_run.conclusion == 'success' &&
+         github.event.workflow_run.event == 'schedule')
+      }}
     name: Apply bootstrap backend
     runs-on: ubuntu-latest
 
