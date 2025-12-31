@@ -34,6 +34,9 @@ name: Terraform Bootstrap Backend - APPLY (manual)
 
 on:
   workflow_dispatch: {}  # manual trigger only
+  workflow_run:
+    workflows: ["Terraform Bootstrap Backend - DESTROY (manual)"]
+    types: [completed]
 
 permissions:
   # Required to checkout repository content.
@@ -47,6 +50,8 @@ concurrency:
 
 jobs:
   apply:
+    if: ${{ github.event.workflow_run.conclusion == 'success' &&
+            github.event.workflow_run.event == 'schedule' }}
     name: Apply bootstrap backend
     runs-on: ubuntu-latest
 

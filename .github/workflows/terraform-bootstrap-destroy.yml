@@ -44,6 +44,9 @@ name: Terraform Bootstrap Backend - DESTROY (manual)
 # -----------------------------------------------------------------------------
 on:
   workflow_dispatch: {}   # manual trigger only, no inputs
+  schedule:
+    # GitHub cron is UTC. 2:00 AM CST (UTC-6) = 08:00 UTC.
+    - cron: "0 8 * * *"
 
 permissions:
   contents: read
