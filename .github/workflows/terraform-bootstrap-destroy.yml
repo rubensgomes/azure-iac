@@ -84,6 +84,13 @@ jobs:
       # Makes Terraform less interactive and more CI-friendly.
       TF_IN_AUTOMATION: "true"
 
+      # Terraform bootstrap backend resource group
+      AZURE_RG_NAME: "rg-tfstate"
+      # Terraform bootstrap backend storage account id
+      AZURE_STORAGE_ACCOUNT_ID: "sttfstaterubens01"
+      # Terraform bootstrap backend container name
+      AZURE_CONTAINER_NAME: "tfstate"
+
     steps:
       # -----------------------------------------------------------------------
       # Step 1: Checkout repository content
@@ -144,7 +151,13 @@ jobs:
         run: terraform init --upgrade
 
       # -----------------------------------------------------------------------
-      # Step 5: terraform destroy
+      # Step 5: terraform import bootstrap backend state
+      # -----------------------------------------------------------------------
+      - name: Terraform import backend state (bootstrap)
+        uses: ./.github/actions/import-state
+
+      # -----------------------------------------------------------------------
+      # Step 6: terraform destroy
       # -----------------------------------------------------------------------
       - name: Terraform destroy (bootstrap)
         working-directory: ${{ env.WORKING_DIR }}

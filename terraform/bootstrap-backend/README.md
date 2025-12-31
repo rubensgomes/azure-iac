@@ -59,3 +59,35 @@ does this “bootstrap first, then configure backend key per env.”
     terraform destroy -auto-approve
     ```
 
+## Issue with Terraform local state
+
+Terraform only manages what’s recorded in its state file. If the state doesn’t
+contain the RG, Terraform assumes it doesn’t exist and tries to create it. Azure
+rejects that because it already exists, and Terraform tells you to import.
+
+That means Terraform is using the local backend. In GitHub Actions, runners are
+ephemeral, so unless you persist the state somehow, each run starts with an
+empty state → destroy can’t destroy anything and apply tries to recreate
+existing resources, which then fails. This is exactly why pipelines that use
+local state on ephemeral runners often fail on the second run.
+
+To fix the issue we need to import the existing resources (e.g., resource group,
+storage account, and container name) into Terraform local state:
+
+   ```bash
+   terraform init --upgrade
+   export RG_NAME="rg-tfstate"
+   export STORAGE_ACCOUNT_ID="sttfstaterubens01"
+   export CONTAINER_NAME="tfstate"
+   # import resource group
+   terraform import azurerm_resource_group.tfstate \
+      "/subscriptions/${ARM_SUBSCRIPTION_ID}/resourceGroups/${RG_NAME}"
+   # import storage account
+   terraform import azurerm_storage_account.tfstate \
+      "/subscriptions/${ARM_SUBSCRIPTION_ID}/resourceGroups/${RG_NAME}/providers/Microsoft.Storage/storageAccounts/${STORAGE_ACCOUNT_ID}"
+   # import container name
+   terraform import azurerm_storage_container.tfstate \
+      "https://${STORAGE_ACCOUNT_ID}.blob.core.windows.net/${CONTAINER_NAME}"
+   terraform plan -out=bootstrap.tfplan
+   terraform apply bootstrap.tfplan
+   ````
