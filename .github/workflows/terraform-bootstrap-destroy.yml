@@ -105,6 +105,36 @@ jobs:
         uses: actions/checkout@v6
 
       # -----------------------------------------------------------------------
+      # Step 1.5: Verify required secrets are present (fail fast)
+      #
+      # Why:
+      #   - If the GitHub Environment is not bound correctly, or secrets are
+      #     missing/misnamed, these values will resolve as empty strings.
+      #   - Failing here gives a clear, immediate error before azure/login or
+      #     terraform does something confusing.
+      #
+      # What it checks:
+      #   - The ARM_* environment variables (which are populated from secrets)
+      #
+      # Security:
+      #   - This step does NOT print secret values, only the missing variable name.
+      # -----------------------------------------------------------------------
+      - name: Verify required secrets are present (no output)
+        shell: bash
+        run: |
+          set -euo pipefail
+          missing=0
+
+          for v in ARM_CLIENT_ID ARM_CLIENT_SECRET ARM_TENANT_ID ARM_SUBSCRIPTION_ID; do
+            if [ -z "${!v:-}" ]; then
+              echo "Missing required secret/env var: ${v}"
+              missing=1
+            fi
+          done
+
+          exit $missing
+
+      # -----------------------------------------------------------------------
       # Step 2: Azure Login (optional but strongly recommended)
       #
       # Terraform can authenticate using ARM_* env vars alone. However, logging in
