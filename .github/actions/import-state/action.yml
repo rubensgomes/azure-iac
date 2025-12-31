@@ -27,7 +27,11 @@ runs:
       working-directory: ${{ env.WORKING_DIR }}
       shell: bash
       run: |
-        set -euo pipefail
+        # Do NOT exit on errors because when running on GitHub we do not have a local
+        # state, and the if condition will always cause the terraform import to run.
+        # Therefore, the import may fail if resource is not found in remote, and we should
+        # continue after that.
+        set -uo pipefail
         if ! terraform state show azurerm_resource_group.tfstate >/dev/null 2>&1; then
           printf "Importing resource %s.\n" "${EXPECTED_RG_NAME}"
           # import resource group
@@ -41,7 +45,11 @@ runs:
       working-directory: ${{ env.WORKING_DIR }}
       shell: bash
       run: |
-        set -euo pipefail
+        # Do NOT exit on errors because when running on GitHub we do not have a local
+        # state, and the if condition will always cause the terraform import to run.
+        # Therefore, the import may fail if resource is not found in remote, and we should
+        # continue after that.
+        set -uo pipefail
         if ! terraform state show azurerm_storage_account.tfstate >/dev/null 2>&1; then
           printf "Importing resource %s.\n" "${EXPECTED_STORAGE_ACCOUNT_NAME}"
           # import storage account
@@ -55,7 +63,11 @@ runs:
       working-directory: ${{ env.WORKING_DIR }}
       shell: bash
       run: |
-        set -euo pipefail
+        # Do NOT exit on errors because when running on GitHub we do not have a local
+        # state, and the if condition will always cause the terraform import to run.
+        # Therefore, the import may fail if resource is not found in remote, and we should
+        # continue after that.
+        set -uo pipefail
         if ! terraform state show azurerm_storage_container.tfstate >/dev/null 2>&1; then
           printf "Importing resource %s.\n" "${EXPECTED_CONTAINER_NAME}"
           # import container name
