@@ -55,7 +55,9 @@ on:
 # Principle of least privilege: do not grant more than you need.
 # -----------------------------------------------------------------------------
 permissions:
+  # Required to checkout repository content.
   contents: read
+  id-token: write
 
 # -----------------------------------------------------------------------------
 # Concurrency:
@@ -102,7 +104,7 @@ jobs:
       # Fetches the Terraform code in terraform/bootstrap-backend.
       # -----------------------------------------------------------------------
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
 
       # -----------------------------------------------------------------------
       # Step 1.5: Verify required secrets are present (fail fast)
@@ -148,6 +150,7 @@ jobs:
       - name: Azure Login (Service Principal Secret)
         uses: azure/login@v2
         with:
+          auth-type: SERVICE_PRINCIPAL
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
