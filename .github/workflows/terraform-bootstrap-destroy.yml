@@ -287,3 +287,14 @@ jobs:
       - name: Terraform destroy (bootstrap)
         working-directory: ${{ env.WORKING_DIR }}
         run: terraform destroy -auto-approve
+
+      # -----------------------------------------------------------------------
+      # Step 9: Capture and save Terraform error output for later view.
+      # -----------------------------------------------------------------------
+      - name: Upload errored.tfstate if present
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: errored-tfstate
+          path: errored.tfstate
+          if-no-files-found: ignore
