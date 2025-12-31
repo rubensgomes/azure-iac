@@ -34,9 +34,6 @@ name: Terraform Bootstrap Backend - APPLY (manual)
 
 on:
   workflow_dispatch: {}  # manual trigger only
-  workflow_run:
-    workflows: ["Terraform Bootstrap Backend - DESTROY (manual)"]
-    types: [completed]
 
 permissions:
   # Required to checkout repository content.
@@ -50,13 +47,6 @@ concurrency:
 
 jobs:
   apply:
-    if: >-
-      ${{
-        github.event_name == 'workflow_dispatch' ||
-        (github.event_name == 'workflow_run' &&
-         github.event.workflow_run.conclusion == 'success' &&
-         github.event.workflow_run.event == 'schedule')
-      }}
     name: Apply bootstrap backend
     runs-on: ubuntu-latest
 
@@ -87,6 +77,14 @@ jobs:
 
       # Tell Terraform it's running in CI (avoids interactive prompts / improves logs)
       TF_IN_AUTOMATION: "true"
+
+      # -----------------------------------------------------------------------
+      # Bootstrap identifiers used both for documentation and safeguard validation.
+      # IMPORTANT: Keep these in sync with your terraform/bootstrap-backend config.
+      # -----------------------------------------------------------------------
+      EXPECTED_RG_NAME: "rg-tfstate"
+      EXPECTED_STORAGE_ACCOUNT_NAME: "sttfstaterubens01"
+      EXPECTED_CONTAINER_NAME: "tfstate"
 
     steps:
       # -----------------------------------------------------------------------
@@ -167,14 +165,20 @@ jobs:
         run: terraform validate
 
       # -----------------------------------------------------------------------
-      # Step 7: terraform plan (save to file)
+      # Step 7: terraform import bootstrap backend state
+      # -----------------------------------------------------------------------
+      - name: Terraform import backend state (bootstrap)
+        uses: ./.github/actions/import-state
+
+      # -----------------------------------------------------------------------
+      # Step 8: terraform plan (save to file)
       # -----------------------------------------------------------------------
       - name: Terraform plan (bootstrap)
         working-directory: ${{ env.WORKING_DIR }}
         run: terraform plan -out=bootstrap.tfplan
 
       # -----------------------------------------------------------------------
-      # Step 8: terraform apply the saved plan
+      # Step 9: terraform apply the saved plan
       # -----------------------------------------------------------------------
       - name: Terraform apply (bootstrap)
         working-directory: ${{ env.WORKING_DIR }}

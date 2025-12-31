@@ -1,23 +1,22 @@
 # =============================================================================
-# Terraform Bootstrap Backend - DESTROY (manual, no safeguard)
+# Terraform Bootstrap Backend - DESTROY (manual, guarded)
 #
 # Purpose:
 #   Destroys ONLY the Terraform *bootstrap backend* resources defined under:
 #       terraform/bootstrap-backend
 #
 # Why this exists:
-#   Bootstrap backend resources are foundational (state storage account, container,
-#   resource group, etc.). This workflow provides an explicit, standalone way to
-#   delete those foundational resources when you truly mean it.
+#   Bootstrap backend resources are foundational (state RG, storage account,
+#   blob container, etc.). This workflow provides an explicit, standalone way
+#   to delete those foundational resources when you truly mean it.
 #
 # Trigger:
 #   Manual only (workflow_dispatch). You start it from the GitHub Actions UI.
 #
-# Behavior (IMPORTANT):
-#   - Runs "terraform destroy -auto-approve" (fully non-interactive)
-#   - No confirmation prompt / no secondary approval in workflow logic
-#   - Any safety controls should be implemented via GitHub Environments,
-#     branch protections, repo permissions, or optional workflow inputs.
+# SAFEGUARD (IMPORTANT):
+#   This workflow now enforces an explicit “question + response” safeguard:
+#   - The workflow_dispatch form asks the user to type a specific phrase.
+#   - The job fails immediately if the phrase does not match exactly.
 #
 # Authentication:
 #   Uses Azure Service Principal + Client Secret stored in GitHub Environment
@@ -29,10 +28,6 @@
 #
 # Notes:
 #   - Terraform automatically loads terraform.tfvars from WORKING_DIR.
-#     So values like enable_rg_lock=false are applied automatically.
-#   - If your bootstrap terraform creates an Azure RG delete lock, destroy can
-#     fail with ScopeLocked errors. Your note implies enable_rg_lock=false to
-#     avoid that (good).
 #   - azure/login@v2 does NOT accept "client-secret:" as an input; for SP+secret
 #     auth you must use the "creds" JSON object.
 # =============================================================================
@@ -40,14 +35,42 @@
 name: Terraform Bootstrap Backend - DESTROY (manual)
 
 # -----------------------------------------------------------------------------
-# Manual trigger ONLY.
+# Manual trigger ONLY, with safeguard inputs.
+#
+# The workflow UI will show these fields when you click "Run workflow".
 # -----------------------------------------------------------------------------
 on:
-  workflow_dispatch: {}   # manual trigger only, no inputs
-  schedule:
-    # GitHub cron is UTC. 2:00 AM CST (UTC-6) = 08:00 UTC.
-    - cron: "0 8 * * *"
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: >
+          SAFEGUARD QUESTION: Type EXACTLY the phrase below to confirm destruction:
+          DESTROY rg-tfstate sttfstaterubens01 tfstate
+        required: true
+        type: string
 
+      rg_name:
+        description: "Target RG name (must match the expected bootstrap RG)"
+        required: true
+        default: "rg-tfstate"
+        type: string
+
+      storage_account_name:
+        description: "Target Storage Account name (must match expected)"
+        required: true
+        default: "sttfstaterubens01"
+        type: string
+
+      container_name:
+        description: "Target Container name (must match expected)"
+        required: true
+        default: "tfstate"
+        type: string
+
+# -----------------------------------------------------------------------------
+# Permissions:
+# contents:read is enough for checkout. Keep least privilege.
+# -----------------------------------------------------------------------------
 permissions:
   contents: read
 
@@ -71,11 +94,15 @@ jobs:
     environment: AZURE
 
     env:
+      # -----------------------------------------------------------------------
       # Terraform folder containing the bootstrap backend code + terraform.tfvars
+      # -----------------------------------------------------------------------
       WORKING_DIR: terraform/bootstrap-backend
 
+      # -----------------------------------------------------------------------
       # AzureRM provider authentication (Service Principal + Secret)
       # Terraform's AzureRM provider reads these automatically.
+      # -----------------------------------------------------------------------
       ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
       ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
       ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
@@ -84,26 +111,102 @@ jobs:
       # Makes Terraform less interactive and more CI-friendly.
       TF_IN_AUTOMATION: "true"
 
-      # Terraform bootstrap backend resource group
-      AZURE_RG_NAME: "rg-tfstate"
-      # Terraform bootstrap backend storage account id
-      AZURE_STORAGE_ACCOUNT_ID: "sttfstaterubens01"
-      # Terraform bootstrap backend container name
-      AZURE_CONTAINER_NAME: "tfstate"
+      # -----------------------------------------------------------------------
+      # Bootstrap identifiers used both for documentation and safeguard validation.
+      # IMPORTANT: Keep these in sync with your terraform/bootstrap-backend config.
+      # -----------------------------------------------------------------------
+      EXPECTED_RG_NAME: "rg-tfstate"
+      EXPECTED_STORAGE_ACCOUNT_NAME: "sttfstaterubens01"
+      EXPECTED_CONTAINER_NAME: "tfstate"
+
+      # -----------------------------------------------------------------------
+      # Optional hard lock: only allow a specific actor to run this workflow.
+      # - This is extra defense-in-depth for public repos.
+      # - If you ever rename your GitHub username, update this value.
+      # -----------------------------------------------------------------------
+      ALLOWED_ACTOR: "rubensgomes"
 
     steps:
       # -----------------------------------------------------------------------
       # Step 1: Checkout repository content
+      #
+      # Fetches the Terraform code in terraform/bootstrap-backend.
       # -----------------------------------------------------------------------
       - name: Checkout repository
         uses: actions/checkout@v4
 
       # -----------------------------------------------------------------------
-      # Step 1.5: Verify required secrets are present (fail fast)
+      # Step 2: SAFEGUARD - Validate actor + typed confirmation + target fields
       #
-      # Why:
-      #   - If Environment secrets aren't available, the ARM_* vars become empty.
-      #   - This fails early with a clear message (no secret leakage).
+      # Purpose:
+      #   Ensures destructive operation is deliberate and aimed at the expected
+      #   bootstrap resources.
+      #
+      # What it enforces:
+      #   1) (Optional) Only ALLOWED_ACTOR may run this workflow
+      #   2) rg_name / storage_account_name / container_name must match expected
+      #   3) confirm input must EXACTLY match:
+      #        "DESTROY <rg> <storage> <container>"
+      #
+      # Failure behavior:
+      #   If any check fails, the workflow exits immediately before logging in
+      #   or calling Terraform.
+      # -----------------------------------------------------------------------
+      - name: SAFEGUARD - Validate confirmation (type-to-confirm)
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # ---- (Optional) Actor allowlist gate ----
+          # Comment this block out if you do NOT want actor restriction.
+          if [ "${{ github.actor }}" != "${ALLOWED_ACTOR}" ]; then
+            echo "Denied: Only '${ALLOWED_ACTOR}' may run this workflow."
+            echo "Current actor: '${{ github.actor }}'"
+            exit 1
+          fi
+
+          # ---- Validate target identifiers match expected ----
+          if [ "${{ github.event.inputs.rg_name }}" != "${EXPECTED_RG_NAME}" ]; then
+            echo "Denied: rg_name mismatch."
+            echo "Expected: '${EXPECTED_RG_NAME}'"
+            echo "Got:      '${{ github.event.inputs.rg_name }}'"
+            exit 1
+          fi
+
+          if [ "${{ github.event.inputs.storage_account_name }}" != "${EXPECTED_STORAGE_ACCOUNT_NAME}" ]; then
+            echo "Denied: storage_account_name mismatch."
+            echo "Expected: '${EXPECTED_STORAGE_ACCOUNT_NAME}'"
+            echo "Got:      '${{ github.event.inputs.storage_account_name }}'"
+            exit 1
+          fi
+
+          if [ "${{ github.event.inputs.container_name }}" != "${EXPECTED_CONTAINER_NAME}" ]; then
+            echo "Denied: container_name mismatch."
+            echo "Expected: '${EXPECTED_CONTAINER_NAME}'"
+            echo "Got:      '${{ github.event.inputs.container_name }}'"
+            exit 1
+          fi
+
+          # ---- Validate type-to-confirm phrase ----
+          expected="DESTROY ${EXPECTED_RG_NAME} ${EXPECTED_STORAGE_ACCOUNT_NAME} ${EXPECTED_CONTAINER_NAME}"
+          if [ "${{ github.event.inputs.confirm }}" != "${expected}" ]; then
+            echo "Denied: Confirmation phrase did not match exactly."
+            echo "Expected: ${expected}"
+            echo "Got:      ${{ github.event.inputs.confirm }}"
+            exit 1
+          fi
+
+          echo "Safeguard passed. Proceeding with destroy."
+
+      # -----------------------------------------------------------------------
+      # Step 3: Verify required secrets are present (fail fast)
+      #
+      # Purpose:
+      #   Ensures Environment secrets actually resolved into ARM_* variables.
+      #   If any are missing, fail before attempting Azure login or Terraform.
+      #
+      # Security:
+      #   Does not print secret values (only variable names).
       # -----------------------------------------------------------------------
       - name: Verify required secrets are present (no output)
         shell: bash
@@ -119,10 +222,11 @@ jobs:
           exit $missing
 
       # -----------------------------------------------------------------------
-      # Step 2: Azure Login (Service Principal + Client Secret)
+      # Step 4: Azure Login (Service Principal + Client Secret)
       #
       # Notes:
-      #   - For azure/login@v2, SP+secret auth must be passed via "creds" JSON.
+      #   - azure/login@v2 expects SP+secret auth via the "creds" JSON payload.
+      #   - We explicitly set auth-type=SERVICE_PRINCIPAL.
       # -----------------------------------------------------------------------
       - name: Azure Login (Service Principal Secret)
         uses: azure/login@v2
@@ -135,7 +239,11 @@ jobs:
              "subscriptionId":"${{ secrets.AZURE_SUBSCRIPTION_ID }}"}
 
       # -----------------------------------------------------------------------
-      # Step 3: Install Terraform CLI on the runner
+      # Step 5: Install Terraform CLI on the runner
+      #
+      # Notes:
+      #   - Keep version pinned to match your validated version.
+      #   - terraform_wrapper=false keeps logs simpler/cleaner.
       # -----------------------------------------------------------------------
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
@@ -144,20 +252,37 @@ jobs:
           terraform_wrapper: false
 
       # -----------------------------------------------------------------------
-      # Step 4: terraform init
+      # Step 6: terraform init
+      #
+      # Purpose:
+      #   Initializes providers and state so Terraform can destroy correctly.
       # -----------------------------------------------------------------------
       - name: Terraform init (bootstrap)
         working-directory: ${{ env.WORKING_DIR }}
         run: terraform init --upgrade
 
       # -----------------------------------------------------------------------
-      # Step 5: terraform import bootstrap backend state
+      # Step 7: terraform import bootstrap backend state (optional)
+      #
+      # Purpose:
+      #   If resources were created previously outside this runner’s state,
+      #   import-state can align state with reality before destruction.
+      #
+      # Note:
+      #   This assumes you have a local composite action at:
+      #     ./.github/actions/import-state
       # -----------------------------------------------------------------------
       - name: Terraform import backend state (bootstrap)
         uses: ./.github/actions/import-state
 
       # -----------------------------------------------------------------------
-      # Step 6: terraform destroy
+      # Step 8: terraform destroy
+      #
+      # WARNING:
+      #   This permanently deletes the bootstrap backend resources.
+      #
+      # -auto-approve:
+      #   Non-interactive destroy. The safeguard above is your human confirmation.
       # -----------------------------------------------------------------------
       - name: Terraform destroy (bootstrap)
         working-directory: ${{ env.WORKING_DIR }}
