@@ -1,5 +1,5 @@
-# envs/dev/versions.tf
-# envs/dev module versions
+# phase1/versions.tf
+#  "phase1" versions shared by all modules
 
 terraform {
   required_version = "~> 1.14"
@@ -10,8 +10,4 @@ terraform {
       version = "~> 4.57"
     }
   }
-
-  # backend config is supplied via -backend-config=backend.hcl
-  backend "azurerm" {}
 }
-

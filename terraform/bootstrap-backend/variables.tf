@@ -1,5 +1,5 @@
 # bootstrap-backend/variables.tf
-# "bootstrap-backend" variables
+# "bootstrap-backend" module variables
 
 variable "location" {
   type        = string

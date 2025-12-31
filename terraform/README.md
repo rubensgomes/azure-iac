@@ -1,9 +1,14 @@
-# terraform
+# terraform/README.md
 
-In order to have Terraform property authenticate against Azure we need to
-create a Service Principal.  In addition, we must have the proper roles assigned
-to this Service Principal to allow Terraform to create/destroy all the required
-resources.
+This file describes credential configuration steps required to allow Terraform
+to authenticate against Microsoft Azure Cloud.
+
+## Service Principal and Secrets
+
+We are using a `Service Principal + Secrets` to allow Terraform to authenticate
+against Azure. Also, since Terraform is assigning roles to some resource, this
+`Service Principal` must have the `User Access Administrator` role assigned to
+it.
 
 1. Create a Service Principal:
 
@@ -31,7 +36,7 @@ resources.
     # SP_OBJECT_ID='<SECRET_INFO>'
     ```
 
-3. Add "user Access Administrator" role:
+3. Add "User Access Administrator" role:
 
     ```bash
     SP_OBJECT_ID="<SECRET_INFO>"

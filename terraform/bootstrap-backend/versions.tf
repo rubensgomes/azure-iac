@@ -1,5 +1,6 @@
 # bootstrap-backend/versions.tf
-# terraform + provider versions used by the "bootstrap-backend"
+# "bootstrap-backend" module  provider versions
+
 terraform {
   required_version = "~> 1.14"
 

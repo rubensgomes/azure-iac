@@ -1,5 +1,5 @@
 # bootstrap-backend/outputs.tf
-# "bootstrap-backend" outputs
+# "bootstrap-backend" module outputs
 
 output "backend_resource_group_name" {
   value       = azurerm_resource_group.tfstate.name

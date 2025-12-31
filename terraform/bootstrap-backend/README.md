@@ -1,20 +1,20 @@
-# bootstrap-backend
+# terraform/bootstrap-backend/README.md
 
-This is the Terraform bootstrap stage (bootstrap-backend) operation which uses
-local state to create the storage resources required by Terraform for storage.
-This stage MUST be run prior to anything else!!!
+This is the Terraform bootstrap stage (bootstrap-backend) moule. This module
+implements Terraform operations which using local state to create the resource
+group and storage resources required by Terraform. This stage MUST be run prior
+to anything else, and it is therefore named "bootstrap-backend".
 
-This module is part of creating backend initial resources required by Terraform:
+The following Terraform backend initial resources are created:
 
 - resource group (e.g., rg-tfstate)
 - storage account (e.g., sttfstaterubens01)
 - storage container (e.g., tstate)
 
-This module drives a separate bootstrap root module you run once with local
-state, then everything else uses remote state. That is, this module commonly
-does this “bootstrap first, then configure backend key per env.”
+Once this module is run, Terraform will be able to use the corresponding 
+blob storage to store the state files of Terraform configurations.
 
-## Steps
+## Configuration Steps
 
 1. Ensure ARM credential environment variables are found:
 

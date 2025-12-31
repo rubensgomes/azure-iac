@@ -1,5 +1,5 @@
 # bootstrap-backend/main.tf
-# "bootstrap-backend" root module logic.
+# "bootstrap-backend" module main root logic
 
 provider "azurerm" {
   features {}
