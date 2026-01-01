@@ -44,6 +44,8 @@ on:
     inputs:
       confirm:
         description: >
+          DO NOT EVER REMOVE THE BOOTSTRAP BACKEND RESOURCES UNLESS YOU FOLLOW A VERY
+          RIGOROUS PROCEDURE BEFORE DOING SO.
           SAFEGUARD QUESTION: Type EXACTLY the phrase below to confirm destruction:
           DESTROY rg-tfstate sttfstaterubens01 tfstate
         required: true

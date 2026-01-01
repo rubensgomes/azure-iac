@@ -96,15 +96,50 @@ storage account, and container name) into Terraform local state:
 
 In order to store the bootstrap-backend Terraform state in the Azure Storage
 account/container, first ensure you have successfully created the above backend
-initial resources. 
+initial resources.
 
 The “gotcha” here is the classic chicken‑and‑egg problem: you can’t use an Azure
 Blob backend until the storage account/container exist. Once you've already
 created them (using local state), you’re now in the perfect position to migrate
 that local state into the blob container.
 
-1. Run the steps below:
+1. Ensure you have created Terraform backend storage resources (e.g., resource
+   group, storage account, and container) in Azure
+2. Ensure 'bootstrap-backend/backend.tf' has the following:
 
-```bash
-- 
-```
+   ```text
+   terraform {
+     backend "azurerm" {
+       resource_group_name  = "rg-tfstate"
+       storage_account_name = "sttfstaterubens01"
+       container_name       = "tfstate"
+   
+       # IMPORTANT: choose a unique key for the BOOTSTRAP state.
+       # Do not reuse the same key as your phase1 state.
+       key = "bootstrap/backend.tfstate"
+   
+       # We want to use SP + Secrets to access the Blob Storage
+       use_azuread_auth = false
+     }
+   }
+   ```
+
+3. Run the following command locally:
+
+   ```bash
+   # answer yes at the prompt
+   terraform init -migrate-state
+   ```
+
+## Destroying the Terraform Backend
+
+NEVER DESTROY THE BACKEND WHILE USING TERRAFORM TO STORE STATE ON THE BACKEND.
+FROM NOW ON DO NOT EVER REMOVE THE BACKEND RESOURCES UNLESS YOU FOLLOW A VERY
+RIGOROUS PROCEDURE BEFORE DOING SO.
+
+Before destroying bootstrap backend resources, always do:
+
+- Migrate state back to local first (safe teardown)
+- Change backend to local
+- terraform init -migrate-state
+- terraform destroy
